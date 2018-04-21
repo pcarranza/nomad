@@ -147,10 +147,56 @@ func GetDockerCoordinator(config *dockerCoordinatorConfig) *dockerCoordinator {
 	return globalCoordinator
 }
 
+type layerProgress struct {
+	id           string
+	status       layerProgressStatus
+	currentBytes int64
+	totalBytes   int64
+}
+
+type layerProgressStatus int
+
+const (
+	layerProgressStatusUnknown layerProgressStatus = iota
+	layerProgressStatusStarting
+	layerProgressStatusWaiting
+	layerProgressStatusDownloading
+	layerProgressStatusVerifying
+	layerProgressStatusDownloaded
+	layerProgressStatusExtracting
+	layerProgressStatusComplete
+	layerProgressStatusExists
+)
+
+func lpsFromString(status string) layerProgressStatus {
+	switch status {
+	case "Pulling fs layer":
+		return layerProgressStatusStarting
+	case "Waiting":
+		return layerProgressStatusWaiting
+	case "Downloading":
+		return layerProgressStatusDownloading
+	case "Verifying Checksum":
+		return layerProgressStatusVerifying
+	case "Download complete":
+		return layerProgressStatusDownloaded
+	case "Extracting":
+		return layerProgressStatusExtracting
+	case "Pull complete":
+		return layerProgressStatusComplete
+	case "Already exists":
+		return layerProgressStatusExists
+	default:
+		return layerProgressStatusUnknown
+	}
+}
+
 type imageProgress struct {
 	sync.RWMutex
 	lastMessage *jsonmessage.JSONMessage
 	timestamp   time.Time
+	layers      map[string]*layerProgress
+	pullStart   time.Time
 }
 
 func (p *imageProgress) get() (string, time.Time) {
@@ -161,16 +207,26 @@ func (p *imageProgress) get() (string, time.Time) {
 		return "No progress", p.timestamp
 	}
 
-	var prefix string
-	if p.lastMessage.ID != "" {
-		prefix = fmt.Sprintf("%s:", p.lastMessage.ID)
+	var pulled, pulling int
+	for _, l := range p.layers {
+		if l.status == layerProgressStatusDownloading {
+			pulling++
+		} else if l.status > layerProgressStatusVerifying {
+			pulled++
+		}
 	}
 
-	if p.lastMessage.Progress == nil {
-		return fmt.Sprintf("%s%s", prefix, p.lastMessage.Status), p.timestamp
+	elapsed := time.Now().Sub(p.pullStart)
+	cur := p.currentBytes()
+	total := p.totalBytes()
+	var est int64
+	if cur != 0 {
+		est = (elapsed.Nanoseconds() / cur * total) - elapsed.Nanoseconds()
 	}
 
-	return fmt.Sprintf("%s%s %s", prefix, p.lastMessage.Status, p.lastMessage.Progress.String()), p.timestamp
+	return fmt.Sprintf("Pulled %d/%d (%d/%dMB) pulling %d layers - est %.1fs remaining",
+		pulled, len(p.layers), cur/1000/1000, total/1000/1000, pulling,
+		time.Duration(est).Seconds()), p.timestamp
 }
 
 func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
@@ -179,6 +235,40 @@ func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 
 	p.lastMessage = msg
 	p.timestamp = time.Now()
+
+	lps := lpsFromString(msg.Status)
+	if lps == layerProgressStatusUnknown {
+		return
+	}
+
+	layer, ok := p.layers[msg.ID]
+	if !ok {
+		layer = &layerProgress{id: msg.ID}
+		p.layers[msg.ID] = layer
+	}
+	layer.status = lps
+	if msg.Progress != nil && lps == layerProgressStatusDownloading {
+		layer.currentBytes = msg.Progress.Current
+		layer.totalBytes = msg.Progress.Total
+	} else if lps == layerProgressStatusDownloaded {
+		layer.currentBytes = layer.totalBytes
+	}
+}
+
+func (p *imageProgress) currentBytes() int64 {
+	var b int64
+	for _, l := range p.layers {
+		b += l.currentBytes
+	}
+	return b
+}
+
+func (p *imageProgress) totalBytes() int64 {
+	var b int64
+	for _, l := range p.layers {
+		b += l.totalBytes
+	}
+	return b
 }
 
 type progressReporterFunc func(image string, msg string, timestamp time.Time, pullStart time.Time)
@@ -193,7 +283,6 @@ type imageProgressManager struct {
 	cancel           context.CancelFunc
 	stopCh           chan struct{}
 	buf              bytes.Buffer
-	pullStart        time.Time
 }
 
 func newImageProgressManager(
@@ -205,9 +294,12 @@ func newImageProgressManager(
 		inactivityFunc:   inactivityFunc,
 		reportInterval:   defaultImageProgressReportInterval,
 		reporter:         reporter,
-		imageProgress:    &imageProgress{timestamp: time.Now()},
-		cancel:           cancel,
-		stopCh:           make(chan struct{}),
+		imageProgress: &imageProgress{
+			timestamp: time.Now(),
+			layers:    make(map[string]*layerProgress),
+		},
+		cancel: cancel,
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -533,9 +625,7 @@ func (d *dockerCoordinator) handlePullInactivity(image, msg string, timestamp, p
 }
 
 func (d *dockerCoordinator) handlePullProgressReport(image, msg string, timestamp, pullStart time.Time) {
-	if timestamp.Sub(pullStart) > 10*time.Second {
-		d.logger.Printf("[DEBUG] driver.docker: image %s pull progress: %s", image, msg)
-	}
+	d.logger.Printf("[DEBUG] driver.docker: image %s pull progress: %s", image, msg)
 
 	if timestamp.Sub(pullStart) > 2*time.Minute {
 		d.emitEvent(image, "Docker image %s pull progress: %s", image, msg)
