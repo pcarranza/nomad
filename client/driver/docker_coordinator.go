@@ -26,9 +26,9 @@ var (
 )
 
 const (
-	// dockerPullInactivityDeadline is the length of time we wait for docker to
-	// progress in pulling an image, after which the inactivtiy handler is run.
-	dockerPullInactivityDeadline = 2 * time.Minute
+	// dockerPullProgressEmitInterval is the interval at which the pull progress
+	// is emited to the allocation
+	dockerPullProgressEmitInterval = 2 * time.Minute
 )
 
 // pullFuture is a sharable future for retrieving a pulled images ID and any
@@ -403,7 +403,7 @@ func (d *dockerCoordinator) handlePullInactivity(image, msg string, timestamp, p
 func (d *dockerCoordinator) handlePullProgressReport(image, msg string, timestamp, pullStart time.Time) {
 	d.logger.Printf("[DEBUG] driver.docker: image %s pull progress: %s", image, msg)
 
-	if timestamp.Sub(pullStart) > dockerPullInactivityDeadline {
+	if timestamp.Sub(pullStart) > dockerPullProgressEmitInterval {
 		d.emitEvent(image, "Docker image %s pull progress: %s", image, msg)
 	}
 }

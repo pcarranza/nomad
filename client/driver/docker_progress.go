@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/jsonmessage"
+	units "github.com/docker/go-units"
 )
 
 const (
@@ -78,6 +79,7 @@ type imageProgress struct {
 	pullStart   time.Time
 }
 
+// get returns a status message and the timestamp of the last status update
 func (p *imageProgress) get() (string, time.Time) {
 	p.RLock()
 	defer p.RUnlock()
@@ -103,11 +105,13 @@ func (p *imageProgress) get() (string, time.Time) {
 		est = (elapsed.Nanoseconds() / cur * total) - elapsed.Nanoseconds()
 	}
 
-	return fmt.Sprintf("Pulled %d/%d (%d/%dMB) pulling %d layers - est %.1fs remaining",
-		pulled, len(p.layers), cur/1000/1000, total/1000/1000, pulling,
+	return fmt.Sprintf("Pulled %d/%d (%s/%s) pulling %d layers - est %.1fs remaining",
+		pulled, len(p.layers), units.BytesSize(float64(cur)), units.BytesSize(float64(total)), pulling,
 		time.Duration(est).Seconds()), p.timestamp
 }
 
+// set takes a status message recieved from the docker engine api during an image
+// pull and updates the status of the coorisponding layer
 func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 	p.Lock()
 	defer p.Unlock()
@@ -134,9 +138,10 @@ func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 	}
 }
 
+// currentBytes iterates through all image layers and sums the total of
+// current bytes. The caller is responsible for aquiring a read lock on the
+// imageProgress struct
 func (p *imageProgress) currentBytes() int64 {
-	p.RLock()
-	defer p.RUnlock()
 	var b int64
 	for _, l := range p.layers {
 		b += l.currentBytes
@@ -144,9 +149,10 @@ func (p *imageProgress) currentBytes() int64 {
 	return b
 }
 
+// totalBytes iterates through all image layers and sums the total of
+// total bytes. The caller is responsible for aquiring a read lock on the
+// imageProgress struct
 func (p *imageProgress) totalBytes() int64 {
-	p.RLock()
-	defer p.RUnlock()
 	var b int64
 	for _, l := range p.layers {
 		b += l.totalBytes
