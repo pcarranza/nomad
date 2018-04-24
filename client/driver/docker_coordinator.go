@@ -403,7 +403,7 @@ func (d *dockerCoordinator) handlePullInactivity(image, msg string, timestamp, p
 func (d *dockerCoordinator) handlePullProgressReport(image, msg string, timestamp, pullStart time.Time) {
 	d.logger.Printf("[DEBUG] driver.docker: image %s pull progress: %s", image, msg)
 
-	if timestamp.Sub(pullStart) > 2*time.Minute {
+	if timestamp.Sub(pullStart) > dockerPullInactivityDeadline {
 		d.emitEvent(image, "Docker image %s pull progress: %s", image, msg)
 	}
 }
