@@ -189,7 +189,7 @@ func (d *dockerCoordinator) pullImageImpl(image string, authOptions *docker.Auth
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if pullTimeout > 0 {
-		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(pullTimeout))
+		ctx, cancel = context.WithDeadline(ctx, time.Now().Add(pullTimeout))
 	}
 
 	pm := newImageProgressManager(image, cancel, d.handlePullInactivity, d.handlePullProgressReport)
