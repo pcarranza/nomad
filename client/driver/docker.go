@@ -234,7 +234,7 @@ type DockerDriverConfig struct {
 	ReadonlyRootfs       bool                `mapstructure:"readonly_rootfs"`        // Mount the container’s root filesystem as read only
 	AdvertiseIPv6Address bool                `mapstructure:"advertise_ipv6_address"` // Flag to use the GlobalIPv6Address from the container as the detected IP
 	CPUHardLimit         bool                `mapstructure:"cpu_hard_limit"`         // Enforce CPU hard limit.
-	ImagePullTimeoutRaw  int64               `mapstructure:"image_pull_timeout"`     // Timeout on the image pull after which the pull is cancelled
+	ImagePullTimeoutRaw  string              `mapstructure:"image_pull_timeout"`     //
 	ImagePullTimeout     time.Duration       `mapstructure:"-"`                      // Timeout on the image pull after which the pull is cancelled
 }
 
@@ -305,8 +305,11 @@ func (c *DockerDriverConfig) Validate() error {
 		return err
 	}
 	c.Ulimit = ulimit
-	if c.ImagePullTimeoutRaw > 0 {
-		c.ImagePullTimeout = time.Duration(c.ImagePullTimeoutRaw) * time.Second
+	if len(c.ImagePullTimeoutRaw) > 0 {
+		c.ImagePullTimeout, err = time.ParseDuration(c.ImagePullTimeoutRaw)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -742,7 +745,7 @@ func (d *DockerDriver) Validate(config map[string]interface{}) error {
 				Type: fields.TypeBool,
 			},
 			"image_pull_timeout": {
-				Type: fields.TypeInt,
+				Type: fields.TypeString,
 			},
 		},
 	}
