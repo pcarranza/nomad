@@ -27,7 +27,7 @@ var (
 
 const (
 	// dockerPullProgressEmitInterval is the interval at which the pull progress
-	// is emited to the allocation
+	// is emitted to the allocation
 	dockerPullProgressEmitInterval = 2 * time.Minute
 )
 

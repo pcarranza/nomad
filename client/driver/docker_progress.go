@@ -110,7 +110,7 @@ func (p *imageProgress) get() (string, time.Time) {
 		time.Duration(est).Seconds()), p.timestamp
 }
 
-// set takes a status message recieved from the docker engine api during an image
+// set takes a status message received from the docker engine api during an image
 // pull and updates the status of the coorisponding layer
 func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 	p.Lock()
@@ -139,7 +139,7 @@ func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 }
 
 // currentBytes iterates through all image layers and sums the total of
-// current bytes. The caller is responsible for aquiring a read lock on the
+// current bytes. The caller is responsible for acquiring a read lock on the
 // imageProgress struct
 func (p *imageProgress) currentBytes() int64 {
 	var b int64
@@ -150,7 +150,7 @@ func (p *imageProgress) currentBytes() int64 {
 }
 
 // totalBytes iterates through all image layers and sums the total of
-// total bytes. The caller is responsible for aquiring a read lock on the
+// total bytes. The caller is responsible for acquiring a read lock on the
 // imageProgress struct
 func (p *imageProgress) totalBytes() int64 {
 	var b int64
@@ -162,14 +162,14 @@ func (p *imageProgress) totalBytes() int64 {
 
 // progressReporterFunc defines the method for handeling inactivity and report
 // events from the imageProgressManager. The image name, current status message,
-// timestamp of last recieved status update and timestamp of when the pull started
+// timestamp of last received status update and timestamp of when the pull started
 // are passed in.
 type progressReporterFunc func(image string, msg string, timestamp time.Time, pullStart time.Time)
 
 // imageProgressManager tracks the progress of pulling a docker image from an
 // image repository.
 // It also implemented the io.Writer interface so as to be passed to the docker
-// client pull image method in order to recieve status updates from the docker
+// client pull image method in order to receive status updates from the docker
 // engine api.
 type imageProgressManager struct {
 	imageProgress    *imageProgress
@@ -248,7 +248,7 @@ func (pm *imageProgressManager) Write(p []byte) (n int, err error) {
 		}
 
 		if msg.Error != nil {
-			// error recieved from the docker engine api
+			// error received from the docker engine api
 			return n, msg.Error
 		}
 
