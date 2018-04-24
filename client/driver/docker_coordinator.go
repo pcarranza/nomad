@@ -25,6 +25,12 @@ var (
 	imageNotFoundMatcher = regexp.MustCompile(`Error: image .+ not found`)
 )
 
+const (
+	// dockerPullInactivityDeadline is the length of time we wait for docker to
+	// progress in pulling an image, after which the inactivtiy handler is run.
+	dockerPullInactivityDeadline = 2 * time.Minute
+)
+
 // pullFuture is a sharable future for retrieving a pulled images ID and any
 // error that may have occurred during the pull.
 type pullFuture struct {
@@ -181,10 +187,10 @@ func (d *dockerCoordinator) pullImageImpl(image string, authOptions *docker.Auth
 		tag = "latest"
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	if pullTimeout > 0 {
 		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(pullTimeout))
 	}
-	defer cancel()
 
 	pm := newImageProgressManager(image, cancel, d.handlePullInactivity, d.handlePullProgressReport)
 	pullOptions := docker.PullImageOptions{

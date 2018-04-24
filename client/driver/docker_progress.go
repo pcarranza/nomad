@@ -22,6 +22,8 @@ const (
 	defaultImageProgressReportInterval = 10 * time.Second
 )
 
+// layerProgress tracks the state and downloaded bytes of a single layer within
+// a docker image
 type layerProgress struct {
 	id           string
 	status       layerProgressStatus
@@ -66,6 +68,8 @@ func lpsFromString(status string) layerProgressStatus {
 	}
 }
 
+// imageProgress tracks the status of each child layer as its pulled from a
+// docker image repo
 type imageProgress struct {
 	sync.RWMutex
 	lastMessage *jsonmessage.JSONMessage
@@ -131,6 +135,8 @@ func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 }
 
 func (p *imageProgress) currentBytes() int64 {
+	p.RLock()
+	defer p.RUnlock()
 	var b int64
 	for _, l := range p.layers {
 		b += l.currentBytes
@@ -139,6 +145,8 @@ func (p *imageProgress) currentBytes() int64 {
 }
 
 func (p *imageProgress) totalBytes() int64 {
+	p.RLock()
+	defer p.RUnlock()
 	var b int64
 	for _, l := range p.layers {
 		b += l.totalBytes
@@ -146,10 +154,19 @@ func (p *imageProgress) totalBytes() int64 {
 	return b
 }
 
+// progressReporterFunc defines the method for handeling inactivity and report
+// events from the imageProgressManager. The image name, current status message,
+// timestamp of last recieved status update and timestamp of when the pull started
+// are passed in.
 type progressReporterFunc func(image string, msg string, timestamp time.Time, pullStart time.Time)
 
+// imageProgressManager tracks the progress of pulling a docker image from an
+// image repository.
+// It also implemented the io.Writer interface so as to be passed to the docker
+// client pull image method in order to recieve status updates from the docker
+// engine api.
 type imageProgressManager struct {
-	*imageProgress
+	imageProgress    *imageProgress
 	image            string
 	activityDeadline time.Duration
 	inactivityFunc   progressReporterFunc
@@ -163,6 +180,7 @@ type imageProgressManager struct {
 func newImageProgressManager(
 	image string, cancel context.CancelFunc,
 	inactivityFunc, reporter progressReporterFunc) *imageProgressManager {
+
 	return &imageProgressManager{
 		image:            image,
 		activityDeadline: defaultPullActivityDeadline,
@@ -178,30 +196,21 @@ func newImageProgressManager(
 	}
 }
 
-func (pm *imageProgressManager) withActivityDeadline(t time.Duration) *imageProgressManager {
-	pm.activityDeadline = t
-	return pm
-}
-
-func (pm *imageProgressManager) withReportInterval(t time.Duration) *imageProgressManager {
-	pm.reportInterval = t
-	return pm
-}
-
+// start intiates the ticker to trigger the inactivity and reporter handlers
 func (pm *imageProgressManager) start() {
-	pm.pullStart = time.Now()
+	pm.imageProgress.pullStart = time.Now()
 	go func() {
 		ticker := time.NewTicker(defaultImageProgressReportInterval)
 		for {
 			select {
 			case <-ticker.C:
-				msg, timestamp := pm.get()
+				msg, timestamp := pm.imageProgress.get()
 				if time.Now().Sub(timestamp) > pm.activityDeadline {
-					pm.inactivityFunc(pm.image, msg, timestamp, pm.pullStart)
+					pm.inactivityFunc(pm.image, msg, timestamp, pm.imageProgress.pullStart)
 					pm.cancel()
 					return
 				}
-				pm.reporter(pm.image, msg, timestamp, pm.pullStart)
+				pm.reporter(pm.image, msg, timestamp, pm.imageProgress.pullStart)
 			case <-pm.stopCh:
 				return
 			}
@@ -215,27 +224,29 @@ func (pm *imageProgressManager) stop() {
 
 func (pm *imageProgressManager) Write(p []byte) (n int, err error) {
 	n, err = pm.buf.Write(p)
+	var msg jsonmessage.JSONMessage
 
 	for {
 		line, err := pm.buf.ReadBytes('\n')
 		if err == io.EOF {
+			// Partial write of line; push back onto buffer and break until full line
 			pm.buf.Write(line)
 			break
 		}
 		if err != nil {
 			return n, err
 		}
-		var msg jsonmessage.JSONMessage
 		err = json.Unmarshal(line, &msg)
 		if err != nil {
 			return n, err
 		}
 
 		if msg.Error != nil {
+			// error recieved from the docker engine api
 			return n, msg.Error
 		}
 
-		pm.set(&msg)
+		pm.imageProgress.set(&msg)
 	}
 
 	return
