@@ -111,7 +111,7 @@ func (p *imageProgress) get() (string, time.Time) {
 }
 
 // set takes a status message received from the docker engine api during an image
-// pull and updates the status of the coorisponding layer
+// pull and updates the status of the corresponding layer
 func (p *imageProgress) set(msg *jsonmessage.JSONMessage) {
 	p.Lock()
 	defer p.Unlock()

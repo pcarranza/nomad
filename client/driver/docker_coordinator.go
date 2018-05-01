@@ -104,7 +104,9 @@ type dockerCoordinator struct {
 	// only have one request be sent to Docker
 	pullFutures map[string]*pullFuture
 
-	// pullLoggers is used to track the LogEventFn for each alloc pulling an image
+	// pullLoggers is used to track the LogEventFn for each alloc pulling an image.
+	// If multiple alloc's are attempting to pull the same image, each will need
+	// to register its own LogEventFn with the coordinator.
 	pullLoggers map[string][]LogEventFn
 
 	// pullLoggerLock is used to sync access to the pullLoggers map
@@ -394,7 +396,6 @@ func (d *dockerCoordinator) emitEvent(image, message string, args ...interface{}
 
 func (d *dockerCoordinator) handlePullInactivity(image, msg string, timestamp, pullStart time.Time, interval int64) {
 	d.logger.Printf("[ERR] driver.docker: image %s pull aborted due to inactivity, last message recevieved at [%s]: %s", image, timestamp.String(), msg)
-
 }
 
 func (d *dockerCoordinator) handlePullProgressReport(image, msg string, timestamp, pullStart time.Time, interval int64) {
