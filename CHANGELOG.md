@@ -1,3 +1,9 @@
+## 0.8.4 (Unreleased)
+
+IMPROVEMENTS:
+ * client/driver: Add progress monitoring and inactivity detection to docker
+   image pulls [GH-4192] 
+
 ## 0.8.3 (April 27, 2018)
 
 BUG FIXES:
