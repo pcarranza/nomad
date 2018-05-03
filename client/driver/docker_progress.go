@@ -21,6 +21,10 @@ const (
 	// dockerImageProgressReportInterval is the default value set in the
 	// imageProgressManager when newImageProgressManager is called
 	dockerImageProgressReportInterval = 10 * time.Second
+
+	// dockerImageSlowProgressReportInterval is the default value set in the
+	// imageProgressManager when newImageProgressManager is called
+	dockerImageSlowProgressReportInterval = 2 * time.Minute
 )
 
 // layerProgress tracks the state and downloaded bytes of a single layer within
@@ -88,11 +92,15 @@ func (p *imageProgress) get() (string, time.Time) {
 		return "No progress", p.timestamp
 	}
 
-	var pulled, pulling int
+	var pulled, pulling, waiting int
 	for _, l := range p.layers {
-		if l.status == layerProgressStatusDownloading {
+		switch {
+		case l.status == layerProgressStatusWaiting:
+			waiting++
+		case l.status == layerProgressStatusDownloading ||
+			l.status == layerProgressStatusVerifying:
 			pulling++
-		} else if l.status > layerProgressStatusVerifying {
+		case l.status >= layerProgressStatusDownloaded:
 			pulled++
 		}
 	}
@@ -105,9 +113,9 @@ func (p *imageProgress) get() (string, time.Time) {
 		est = (elapsed.Nanoseconds() / cur * total) - elapsed.Nanoseconds()
 	}
 
-	return fmt.Sprintf("Pulled %d/%d (%s/%s) pulling %d layers - est %.1fs remaining",
-		pulled, len(p.layers), units.BytesSize(float64(cur)), units.BytesSize(float64(total)), pulling,
-		time.Duration(est).Seconds()), p.timestamp
+	return fmt.Sprintf("Pulled %d/%d (%s/%s) layers: %d waiting/%d pulling - est %.1fs remaining",
+		pulled, len(p.layers), units.BytesSize(float64(cur)), units.BytesSize(float64(total)),
+		waiting, pulling, time.Duration(est).Seconds()), p.timestamp
 }
 
 // set takes a status message received from the docker engine api during an image
@@ -190,12 +198,13 @@ func newImageProgressManager(
 	inactivityFunc, reporter, slowReporter progressReporterFunc) *imageProgressManager {
 
 	pm := &imageProgressManager{
-		image:            image,
-		activityDeadline: dockerPullActivityDeadline,
-		inactivityFunc:   inactivityFunc,
-		reportInterval:   dockerImageProgressReportInterval,
-		reporter:         reporter,
-		slowReporter:     slowReporter,
+		image:              image,
+		activityDeadline:   dockerPullActivityDeadline,
+		inactivityFunc:     inactivityFunc,
+		reportInterval:     dockerImageProgressReportInterval,
+		reporter:           reporter,
+		slowReportInterval: dockerImageSlowProgressReportInterval,
+		slowReporter:       slowReporter,
 		imageProgress: &imageProgress{
 			timestamp: time.Now(),
 			layers:    make(map[string]*layerProgress),
