@@ -95,7 +95,8 @@ func (p *imageProgress) get() (string, time.Time) {
 	var pulled, pulling, waiting int
 	for _, l := range p.layers {
 		switch {
-		case l.status == layerProgressStatusWaiting:
+		case l.status == layerProgressStatusStarting ||
+			l.status == layerProgressStatusWaiting:
 			waiting++
 		case l.status == layerProgressStatusDownloading ||
 			l.status == layerProgressStatusVerifying:
