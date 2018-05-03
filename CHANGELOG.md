@@ -2,7 +2,9 @@
 
 IMPROVEMENTS:
  * client/driver: Add progress monitoring and inactivity detection to docker
-   image pulls [GH-4192] 
+   image pulls [[GH-4192](https://github.com/hashicorp/nomad/issues/4192) 
+ * command: add -short option to init command that emits a minimal
+   jobspec [[GH-4239](https://github.com/hashicorp/nomad/issues/4239)]
 
 ## 0.8.3 (April 27, 2018)
 
