@@ -316,6 +316,7 @@ func cloneWithTimeout(httpClient *http.Client, t time.Duration) (*http.Client, e
 	// clone http client with new transport
 	nc := *httpClient
 	nc.Transport = ntr
+	nc.Timeout = t
 	return &nc, nil
 }
 
